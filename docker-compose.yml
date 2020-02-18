@@ -1,0 +1,36 @@
+version: "3"
+services:
+  registry:
+    image: 'registry:2'
+    ports:
+      - "5000:5000"
+    env_file: .env
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
+    volumes:
+      - ${REGISTRY_STORE_PATH:-"./src"}:/var/lib/registry
+      - ./cfg/auth:/auth
+    networks:
+      - default
+  drone:
+    image: drone/drone
+    ports:
+      - "1285:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./cfg/drone:/data
+    env_file: .env
+    networks:
+      - default
+  cleaner:
+    image: anoxis/registry-cli
+    env_file: .env
+    entrypoint: "/bin/sh -c 'while :; do eval /registry.py -r http://registry:5000 -l ${REGISTRY_USER}:${REGISTRY_PASSWORD} --delete --num ${KEEP_VERSIONS:-5} && sleep ${CLEAN_TIME:-6h}; echo ${KEEP_VERSIONS}; done'"
+    networks:
+      - default
+    depends_on:
+      - registry
+networks:
+  default:
