@@ -19,9 +19,21 @@ services:
     ports:
       - "1285:80"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ./cfg/drone:/data
     env_file: .env
+    networks:
+      - default
+  drone-runner:
+    image: drone/drone-runner-docker
+    ports:
+      - 5001:3000
+    env_file: .env
+    environment:
+      - "DRONE_RPC_HOST=drone"
+      - "DRONE_RPC_PROTO=http"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/root/.docker/config.json
     networks:
       - default
   cleaner:
