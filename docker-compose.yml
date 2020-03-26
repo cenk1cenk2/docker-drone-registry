@@ -3,34 +3,54 @@ services:
   registry:
     image: 'registry:2'
     ports:
-      - "5000:5000"
+      - ${REGISTRY_PORT:-5000}:5000
     env_file: .env
     environment:
-      REGISTRY_AUTH: htpasswd
-      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
-      REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
+      - REGISTRY_AUTH=htpasswd
+      - REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd
+      - REGISTRY_AUTH_HTPASSWD_REALM=Registry Realm
+      - DRONE_DOCKER_CONFIG=/root/.docker/config.json
     volumes:
       - ${REGISTRY_STORE_PATH:-"./src"}:/var/lib/registry
+      - /root/.docker/config.json:/root/.docker/config.json
       - ./cfg/auth:/auth
     networks:
       - default
+  registry-browser:
+    image: klausmeyer/docker-registry-browser
+    env_file: .env
+    ports:
+      - ${REGISTRY_BROWSER_PORT:-9080}:8080
+    environment:
+      - DOCKER_REGISTRY_URL=http://registry:5000
   drone:
     image: drone/drone
     ports:
-      - "1285:80"
+      - ${DRONE_PORT:-8080}:80
     volumes:
       - ./cfg/drone:/data
     env_file: .env
+    environment:
+      - DRONE_YAML_ENDPOINT=http://drone-tree-config:3000
+      - DRONE_YAML_SECRET=${DRONE_RPC_SECRET}
     networks:
       - default
+  drone-tree-config:
+    image: bitsbeats/drone-tree-config
+    environment:
+      - PLUGIN_CONCAT=true
+      - PLUGIN_SECRET=${DRONE_RPC_SECRET}
+      - GITHUB_TOKEN=${DRONE_GITHUB_CLIENT_SECRET}
+      - PLUGIN_WHITELIST_FILE=/whitelist.cfg
+    volumes:
+      - ./cfg/tree-config/whitelist.cfg:/whitelist.cfg
   drone-runner:
     image: drone/drone-runner-docker
-    ports:
-      - 5001:3000
     env_file: .env
     environment:
-      - "DRONE_RPC_HOST=drone"
-      - "DRONE_RPC_PROTO=http"
+      - DRONE_RPC_HOST=drone
+      - DRONE_RPC_PROTO=http
+      - DRONE_DOCKER_CONFIG=/root/.docker/config.json
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /root/.docker/config.json:/root/.docker/config.json
@@ -39,7 +59,7 @@ services:
   cleaner:
     image: anoxis/registry-cli
     env_file: .env
-    entrypoint: "/bin/sh -c 'while :; do eval /registry.py -r http://registry:5000 -l ${REGISTRY_USER}:${REGISTRY_PASSWORD} --delete --num ${KEEP_VERSIONS:-5} && sleep ${CLEAN_TIME:-6h}; echo ${KEEP_VERSIONS}; done'"
+    entrypoint: "/bin/sh -c 'while :; do eval /registry.py -r http://registry:5000 -l ${REGISTRY_USER}:${REGISTRY_PASSWORD} --no-validate-ssl --delete --num ${KEEP_VERSIONS:-5} && sleep ${CLEAN_TIME:-6h}; echo ${KEEP_VERSIONS}; done'"
     networks:
       - default
     depends_on:
